@@ -1,12 +1,13 @@
 #!/usr/bin/env python2
 import csv
 import re
-import sys
 from urllib2 import urlopen
 
-DB_URL = 'http://www.dmr-marc.net/cgi-bin/trbo-database/datadump.cgi?table=users&format=csv&header=1'
+DB_URL = ('http://www.dmr-marc.net/cgi-bin/trbo-database/datadump.cgi'
+          '?table=users&format=csv&header=1')
 ILLEGAL = re.compile('[^a-zA-Z0-9\. ]')
 FIELDNAMES = ('No', 'Call Alias', 'Call Type', 'Call ID', 'Receive Tone')
+
 
 def alias(user):
     callsign = user['Callsign']
@@ -18,7 +19,7 @@ def alias(user):
         names = names.split()
 
     if not name and names:
-	name = names[0]
+        name = names[0]
         if name in ['Dr', 'Dr.']:
             name = names[1]
     if name:
@@ -26,7 +27,6 @@ def alias(user):
     else:
         alias = callsign
     return ILLEGAL.sub('', alias)
-    
 
 db = urlopen(DB_URL)
 csvr = csv.DictReader(db)
