@@ -13,7 +13,7 @@ DB_URL = ('http://www.dmr-marc.net/cgi-bin/trbo-database/datadump.cgi'
 # numbers, space, and period.
 # Dash would have been a better choice than period, but the decision was made
 # without looking closely at the data.
-ILLEGAL = re.compile('[^a-zA-Z0-9\. ]')
+ALIAS_ILLEGAL = re.compile('[^a-zA-Z0-9\. ]')
 
 # These are the field names as given in a CS750 contacts export.
 FIELDNAMES = ('No', 'Call Alias', 'Call Type', 'Call ID', 'Receive Tone')
@@ -48,7 +48,7 @@ def alias_user(user):
 
     # Could do something more useful, like transliterating, but this will
     # require detecting the encoding, which varies from record to record.
-    return ILLEGAL.sub('', alias)
+    return ALIAS_ILLEGAL.sub('', alias)
 
 
 def alias_group(group):
@@ -79,7 +79,7 @@ def alias_group(group):
             alias = name
         else:
             alias = ' '.join((name, timeslot))
-    return ILLEGAL.sub('', alias)
+    return ALIAS_ILLEGAL.sub('', alias)
 
 
 def read_users_csv(users):
@@ -114,13 +114,35 @@ def read_groups_json(groups):
     return result
 
 
-def write_contacts_csv(data, csvo, fieldnames=FIELDNAMES):
-    """Writes the data (expected in CS750 format) to the csvo file-like object.
+def write_contacts_csv(contacts, csvo, fieldnames=FIELDNAMES):
+    """Writes contacts (expected in CS750 format) to the csvo file-like object.
     """
     csvw = csv.DictWriter(csvo, fieldnames)
     csvw.writeheader()
-    for row in data:
+    for row in contacts:
         csvw.writerow(row)
+
+
+def write_contacts_xlsx(contacts, xlsxo,
+                        fieldnames=FIELDNAMES, worksheet='DMR_contacts'):
+    """Writes contacts (expected in CS750 format) to the xlsxo file-like
+    object."""
+    import xlsxwriter
+    wb = xlsxwriter.Workbook(xlsxo, {'in_memory': True})
+    ws = wb.add_worksheet(worksheet)
+    col = 0
+    for field in fieldnames:
+        ws.write_string(0, col, field)
+        col += 1
+    row = 1
+    for contact in contacts:
+        col = 0
+        for field in fieldnames:
+            if field in contact:
+                ws.write(row, col, contact[field])
+            col += 1
+        row += 1
+    wb.close()
 
 
 if __name__ == '__main__':
@@ -130,6 +152,9 @@ if __name__ == '__main__':
     db = urlopen(DB_URL)
     users = read_users_csv(db)
     db.close()
+
+    with open('contacts-dci.xlsx', 'wb') as xlsxo:
+        write_contacts_xlsx(groups + users, xlsxo)
 
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
