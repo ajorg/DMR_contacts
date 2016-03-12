@@ -158,4 +158,4 @@ if __name__ == '__main__':
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
     with open('DMR_contacts.csv', 'wb') as csvo:
-        write_contacts_csv(groups + users, csvo)
+        write_contacts_csv(users, csvo)
