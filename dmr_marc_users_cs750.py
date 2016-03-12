@@ -50,16 +50,14 @@ def alias(user):
     return ILLEGAL.sub('', alias)
 
 
-def convert(db, output):
-    """Reads DMR-MARC csv from the db file-like object and writes CS750 csv
-    to the output file-like object."""
+def read_users_csv(users):
+    """Reads DMR-MARC csv from the db file-like object and returns a list of
+    dicts in CS750 export format."""
     csvr = csv.DictReader(db)
-    csvw = csv.DictWriter(output, fieldnames=FIELDNAMES)
-
-    csvw.writeheader()
+    result = []
     for row in csvr:
         try:
-            csvw.writerow({
+            result.append({
                 'Call Alias': alias(row),
                 'Call Type': 'Private Call',
                 'Call ID': row['Radio ID'],
@@ -68,11 +66,22 @@ def convert(db, output):
             # For now, skip records that have problems. The most common is an
             # empty record, because of a newline in a field.
             pass
+    return result
+
+
+def write_contacts_csv(data, csvo, fieldnames=FIELDNAMES):
+    """Writes the data (expected in CS750 format) to the csvo file-like object.
+    """
+    csvw = csv.DictWriter(csvo, fieldnames)
+    csvw.writeheader()
+    for row in data:
+        csvw.writerow(row)
+
 
 if __name__ == '__main__':
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
-    with open('DMR_contacts.csv', 'wb') as output:
+    with open('DMR_contacts.csv', 'wb') as csvo:
         db = urlopen(DB_URL)
-        convert(db, output)
+        write_contacts_csv(read_users_csv(db), csvo)
         db.close()
