@@ -97,7 +97,7 @@ def read_users_csv(users):
             # For now, skip records that have problems. The most common is an
             # empty record, because of a newline in a field.
             pass
-    return result
+    return sorted(result, key=lambda k: k['Call ID'])
 
 
 def read_groups_json(groups):
@@ -110,7 +110,7 @@ def read_groups_json(groups):
             'Call Type': 'Group Call',
             'Call ID': tgid,
             'Receive Tone': 'No'})
-    return result
+    return sorted(result, key=lambda k: k['Call Alias'])
 
 
 def write_contacts_csv(contacts, csvo, fieldnames=FIELDNAMES):
