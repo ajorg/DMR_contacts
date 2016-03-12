@@ -1,5 +1,6 @@
 #!/usr/bin/env python2
 import csv
+import json
 import re
 from urllib2 import urlopen
 
@@ -18,7 +19,7 @@ ILLEGAL = re.compile('[^a-zA-Z0-9\. ]')
 FIELDNAMES = ('No', 'Call Alias', 'Call Type', 'Call ID', 'Receive Tone')
 
 
-def alias(user):
+def alias_user(user):
     """Takes a user record as given in the DMR-MARC csv and returns a
     Call Alias composed of the Callsign and either the Nickname or Name.
     """
@@ -50,6 +51,37 @@ def alias(user):
     return ILLEGAL.sub('', alias)
 
 
+def alias_group(group):
+    """Takes a talkgroup record in an intermediate format and returns an alias
+    with the timeslot number appended if not already represented.
+
+    The intention is to make it easier to apply the correct timeslot when
+    creating a channel in the CPS.
+
+    Input:
+    {
+      "timeslot": 2,
+      "name": "Utah",
+      "id": 3149
+    }
+
+    Output:
+    "Utah 2"
+    """
+    alias = None
+    if 'timeslot' not in group or not group['timeslot']:
+        alias = group['name']
+    else:
+        timeslot = str(group['timeslot'])
+        name = group['name']
+        # Only if it ends in ' n', or we won't append to 'TAC 312'
+        if name[-2:] == ' ' + timeslot:
+            alias = name
+        else:
+            alias = ' '.join((name, timeslot))
+    return ILLEGAL.sub('', alias)
+
+
 def read_users_csv(users):
     """Reads DMR-MARC csv from the db file-like object and returns a list of
     dicts in CS750 export format."""
@@ -58,7 +90,7 @@ def read_users_csv(users):
     for row in csvr:
         try:
             result.append({
-                'Call Alias': alias(row),
+                'Call Alias': alias_user(row),
                 'Call Type': 'Private Call',
                 'Call ID': row['Radio ID'],
                 'Receive Tone': 'No'})
@@ -66,6 +98,19 @@ def read_users_csv(users):
             # For now, skip records that have problems. The most common is an
             # empty record, because of a newline in a field.
             pass
+    return result
+
+
+def read_groups_json(groups):
+    """Reads json from the groups file-like object and returns a list of dicts
+    in CS750 export format."""
+    result = []
+    for group in json.load(groups):
+        result.append({
+            'Call Alias': alias_group(group),
+            'Call Type': 'Group Call',
+            'Call ID': group['id'],
+            'Receive Tone': 'No'})
     return result
 
 
@@ -79,9 +124,14 @@ def write_contacts_csv(data, csvo, fieldnames=FIELDNAMES):
 
 
 if __name__ == '__main__':
+    with open('dci.json') as dci:
+        groups = read_groups_json(dci)
+
+    db = urlopen(DB_URL)
+    users = read_users_csv(db)
+    db.close()
+
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
     with open('DMR_contacts.csv', 'wb') as csvo:
-        db = urlopen(DB_URL)
-        write_contacts_csv(read_users_csv(db), csvo)
-        db.close()
+        write_contacts_csv(groups + users, csvo)
