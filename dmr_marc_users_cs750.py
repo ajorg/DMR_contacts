@@ -62,7 +62,6 @@ def alias_group(group):
     {
       "timeslot": 2,
       "name": "Utah",
-      "id": 3149
     }
 
     Output:
@@ -105,11 +104,11 @@ def read_groups_json(groups):
     """Reads json from the groups file-like object and returns a list of dicts
     in CS750 export format."""
     result = []
-    for group in json.load(groups):
+    for tgid, group in json.load(groups).items():
         result.append({
             'Call Alias': alias_group(group),
             'Call Type': 'Group Call',
-            'Call ID': group['id'],
+            'Call ID': tgid,
             'Receive Tone': 'No'})
     return result
 
@@ -146,7 +145,7 @@ def write_contacts_xlsx(contacts, xlsxo,
 
 
 if __name__ == '__main__':
-    with open('dci.json') as dci:
+    with open('dci-groups.json') as dci:
         groups = read_groups_json(dci)
 
     db = urlopen(DB_URL)
