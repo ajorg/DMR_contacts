@@ -82,9 +82,9 @@ def alias_group(group):
 
 
 def read_users_csv(users):
-    """Reads DMR-MARC csv from the db file-like object and returns a list of
+    """Reads DMR-MARC csv from the users file-like object and returns a list of
     dicts in CS750 export format."""
-    csvr = csv.DictReader(db)
+    csvr = csv.DictReader(users)
     result = []
     for row in csvr:
         try:
