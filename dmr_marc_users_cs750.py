@@ -144,13 +144,24 @@ def write_contacts_xlsx(contacts, xlsxo,
     wb.close()
 
 
-if __name__ == '__main__':
-    with open('dci-groups.json') as dci:
-        groups = read_groups_json(dci)
-
+def get_users(db_url=DB_URL):
     db = urlopen(DB_URL)
     users = read_users_csv(db)
     db.close()
+    return users
+
+
+def get_groups(sources=('dci-groups.json',)):
+    groups = []
+    for source in sources:
+        with open(source) as s:
+            groups.extend(read_groups_json(s))
+    return groups
+
+
+if __name__ == '__main__':
+    users = get_users()
+    groups = get_groups()
 
     with open('contacts-dci.xlsx', 'wb') as xlsxo:
         write_contacts_xlsx(groups + users, xlsxo)
