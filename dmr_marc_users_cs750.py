@@ -2,12 +2,18 @@
 import csv
 import json
 import re
+from StringIO import StringIO
 from urllib2 import urlopen
 
 # The JSON is invalid, because of mixed encodings. The CSV also has
 # data quality issues, but most can be ignored.
 DB_URL = ('http://www.dmr-marc.net/cgi-bin/trbo-database/datadump.cgi'
           '?table=users&format=csv&header=1')
+
+# BrandMeister has a list of groups in JavaScript format, not quite JSON
+BM_GROUPS_JS = ('https://raw.githubusercontent.com/zarya'
+                '/BrandMeister-Dashboard/master/js/groups.js')
+JSON_DICT = re.compile(r'({.*})', re.DOTALL)
 
 # The CS750 uses a 6-bit encoding for the Call Alias, using only letters,
 # numbers, space, and period.
@@ -68,6 +74,8 @@ def alias_group(group):
     "Utah 2"
     """
     alias = None
+    if isinstance(group, basestring):
+        group = { 'name': group }
     if 'timeslot' not in group or not group['timeslot']:
         alias = group['name']
     else:
@@ -151,11 +159,19 @@ def get_users(db_url=DB_URL):
     return users
 
 
-def get_groups(sources=('dci-groups.json',)):
+def js_json(js):
+    """Unwraps JSON from the JavaScript containing it."""
+    return JSON_DICT.search(js).groups()[0]
+
+
+def get_groups():
     groups = []
-    for source in sources:
-        with open(source) as s:
-            groups.extend(read_groups_json(s))
+    with open('dci-groups.json') as dci:
+        groups.extend(read_groups_json(dci))
+    bm = urlopen(BM_GROUPS_JS)
+    bm_json = StringIO(js_json(bm.read()))
+    groups.extend(read_groups_json(bm_json))
+    bm.close()
     return groups
 
 
@@ -169,4 +185,4 @@ if __name__ == '__main__':
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
     with open('DMR_contacts.csv', 'wb') as csvo:
-        write_contacts_csv(users, csvo)
+        write_contacts_csv(groups + users, csvo)
