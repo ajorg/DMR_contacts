@@ -34,3 +34,7 @@ def lambda_handler(event=None, context=None):
                      'vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
         ACL='public-read')
     xlsxo.close()
+
+
+if __name__ == '__main__':
+    lambda_handler()
