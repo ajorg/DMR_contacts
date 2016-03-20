@@ -10,30 +10,32 @@ from dmr_marc_users_cs750 import (
     )
 
 
+def s3_contacts(contacts, bucket, key):
+    s3 = boto3.client('s3')
+
+    o = StringIO()
+
+    if key.endswith('.csv'):
+        t = 'text/csv'
+        write_contacts_csv(contacts, o)
+    elif key.endswith('.xlsx'):
+        t = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        write_contacts_xlsx(contacts, o)
+
+    s3.put_object(
+        Bucket=bucket, Key=key,
+        Body=o.getvalue(), ContentType=t, ACL='public-read')
+    o.close()
+
+
 def lambda_handler(event=None, context=None):
     users = get_users()
-
-    csvo = StringIO()
-    write_contacts_csv(users, csvo)
-
-    s3 = boto3.client('s3')
-    s3.put_object(
-        Bucket='dmr-contacts', Key='DMR_contacts.csv',
-        Body=csvo.getvalue(), ContentType='text/csv', ACL='public-read')
-
-    csvo.close()
-
     groups = get_groups()
 
-    xlsxo = StringIO()
-    write_contacts_xlsx(groups + users, xlsxo)
-    s3.put_object(
-        Bucket='dmr-contacts', Key='contacts-dci.xlsx',
-        Body=xlsxo.getvalue(),
-        ContentType=('application/'
-                     'vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
-        ACL='public-read')
-    xlsxo.close()
+    s3_contacts(contacts=users, bucket='dmr-contacts', key='DMR_contacts.csv')
+
+    s3_contacts(contacts=groups+users,
+                bucket='dmr-contacts', key='contacts-dci.xlsx')
 
 
 if __name__ == '__main__':
