@@ -6,7 +6,11 @@ import boto3
 from dmr_marc_users_cs750 import (
     get_users, get_groups,
     write_contacts_csv,
-    write_contacts_xlsx
+    write_contacts_xlsx,
+    )
+from dmrx_most_heard_n0gsg import (
+    get_users as get_most_heard,
+    write_n0gsg_csv,
     )
 
 
@@ -17,7 +21,10 @@ def s3_contacts(contacts, bucket, key):
 
     if key.endswith('.csv'):
         t = 'text/csv'
-        write_contacts_csv(contacts, o)
+        if key.startswith('N0GSG/'):
+            write_n0gsg_csv(contacts, o)
+        else:
+            write_contacts_csv(contacts, o)
     elif key.endswith('.xlsx'):
         t = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         write_contacts_xlsx(contacts, o)
@@ -29,13 +36,16 @@ def s3_contacts(contacts, bucket, key):
 
 
 def lambda_handler(event=None, context=None):
-    users = get_users()
+    marc = get_users()
+    dmrx = get_most_heard()
     groups = get_groups()
 
-    s3_contacts(contacts=users, bucket='dmr-contacts', key='DMR_contacts.csv')
-
-    s3_contacts(contacts=groups+users,
-                bucket='dmr-contacts', key='contacts-dci.xlsx')
+    s3_contacts(contacts=marc, bucket='dmr-contacts',
+                key='CS750/DMR_contacts.csv')
+    s3_contacts(contacts=groups+marc, bucket='dmr-contacts',
+                key='CS750/dci-bm-marc.xlsx')
+    s3_contacts(contacts=dmrx, bucket='dmr-contacts',
+                key='N0GSG/dmrx-most-heard.csv')
 
 
 if __name__ == '__main__':
