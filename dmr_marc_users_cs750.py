@@ -3,7 +3,8 @@ import csv
 import json
 import re
 from StringIO import StringIO
-from urllib2 import urlopen
+
+import requests
 
 # The JSON is invalid, because of mixed encodings. The CSV also has
 # data quality issues, but most can be ignored.
@@ -153,9 +154,10 @@ def write_contacts_xlsx(contacts, xlsxo,
 
 
 def get_users(db_url=DB_URL):
-    db = urlopen(DB_URL)
-    users = read_users_csv(db)
-    db.close()
+    db = requests.get(DB_URL)
+    db_io = StringIO(db.content)
+    users = read_users_csv(db_io)
+    db_io.close()
     return users
 
 
@@ -168,10 +170,10 @@ def get_groups():
     groups = []
     with open('dci-groups.json') as dci:
         groups.extend(read_groups_json(dci))
-    bm = urlopen(BM_GROUPS_JS)
-    bm_json = StringIO(js_json(bm.read()))
+    bm = requests.get(BM_GROUPS_JS)
+    bm_json = StringIO(js_json(bm.content))
     groups.extend(read_groups_json(bm_json))
-    bm.close()
+    bm_json.close()
     return groups
 
 
