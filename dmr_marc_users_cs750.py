@@ -76,7 +76,7 @@ def alias_group(group):
     """
     alias = None
     if isinstance(group, basestring):
-        group = { 'name': group }
+        group = {'name': group}
     if 'timeslot' not in group or not group['timeslot']:
         alias = group['name']
     else:
