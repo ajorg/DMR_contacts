@@ -48,6 +48,8 @@ def lambda_handler(event=None, context=None):
                 key='CS750/dci-bm-marc.xlsx')
     s3_contacts(contacts=dmrx, bucket='dmr-contacts',
                 key='N0GSG/dmrx-most-heard.csv')
+    s3_contacts(contacts=bm, bucket='dmr-contacts',
+                key='N0GSG/brandmeister-groups.csv')
 
 
 if __name__ == '__main__':
