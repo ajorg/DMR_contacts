@@ -31,7 +31,7 @@ def s3_contacts(contacts, bucket, key):
         write_contacts_xlsx(contacts, o)
 
     s3.put_object(
-        Bucket=bucket, Key=key,
+        Bucket=bucket, Key=key, StorageClass='REDUCED_REDUNDANCY',
         Body=o.getvalue(), ContentType=t, ACL='public-read')
     o.close()
 
