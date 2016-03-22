@@ -4,7 +4,8 @@ from StringIO import StringIO
 import boto3
 
 from dmr_marc_users_cs750 import (
-    get_users, get_groups,
+    get_users,
+    get_groups_dci, get_groups_bm,
     write_contacts_csv,
     write_contacts_xlsx,
     )
@@ -38,11 +39,12 @@ def s3_contacts(contacts, bucket, key):
 def lambda_handler(event=None, context=None):
     marc = get_users()
     dmrx = get_most_heard()
-    groups = get_groups()
+    dci = get_groups_dci()
+    bm = get_groups_bm()
 
     s3_contacts(contacts=marc, bucket='dmr-contacts',
                 key='CS750/DMR_contacts.csv')
-    s3_contacts(contacts=groups+marc, bucket='dmr-contacts',
+    s3_contacts(contacts=dci + bm + marc, bucket='dmr-contacts',
                 key='CS750/dci-bm-marc.xlsx')
     s3_contacts(contacts=dmrx, bucket='dmr-contacts',
                 key='N0GSG/dmrx-most-heard.csv')

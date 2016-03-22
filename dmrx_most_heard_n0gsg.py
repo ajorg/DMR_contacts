@@ -4,7 +4,7 @@ import csv
 # dmrx.net uses SSL SNI, which urllib2 doesn't support
 import requests
 
-from dmr_marc_users_cs750 import get_groups
+from dmr_marc_users_cs750 import (get_groups_dci, get_groups_bm)
 
 MOST_HEARD_URL = 'https://dmrx.net/csvfiles/MostHeard.csv'
 
@@ -47,8 +47,9 @@ def get_users(db_url=MOST_HEARD_URL):
 
 
 if __name__ == '__main__':
-    users = get_users()
-    groups = get_groups()
+    marc = get_users()
+    dci = get_groups_dci()
+    bm = get_groups_bm()
 
     with open('n0gsg-dci-bm-dmrx-most-heard.csv', 'wb') as csvo:
-        write_n0gsg_csv(groups + users, csvo)
+        write_n0gsg_csv(dci + bm + marc, csvo)

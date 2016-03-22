@@ -166,25 +166,28 @@ def js_json(js):
     return JSON_DICT.search(js).groups()[0]
 
 
-def get_groups():
-    groups = []
+def get_groups_dci():
     with open('dci-groups.json') as dci:
-        groups.extend(read_groups_json(dci))
+        return read_groups_json(dci)
+
+
+def get_groups_bm():
     bm = requests.get(BM_GROUPS_JS)
     bm_json = StringIO(js_json(bm.content))
-    groups.extend(read_groups_json(bm_json))
+    groups = read_groups_json(bm_json)
     bm_json.close()
     return groups
 
 
 if __name__ == '__main__':
-    users = get_users()
-    groups = get_groups()
+    marc = get_users()
+    dci = get_groups_dci()
+    bm = get_groups_bm()
 
     with open('contacts-dci.xlsx', 'wb') as xlsxo:
-        write_contacts_xlsx(groups + users, xlsxo)
+        write_contacts_xlsx(dci + bm + marc, xlsxo)
 
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
     with open('DMR_contacts.csv', 'wb') as csvo:
-        write_contacts_csv(groups + users, csvo)
+        write_contacts_csv(dci + bm + marc, csvo)
