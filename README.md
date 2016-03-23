@@ -1,2 +1,2 @@
-# DMR_contacts
-Scripts to convert DMR-MARC data to CSV for import into the CSI CS750
+# DMR contacts
+Convert DMR contact sources to import formats used by some common radios.
