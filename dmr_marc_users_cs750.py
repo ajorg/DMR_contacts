@@ -9,7 +9,7 @@ import requests
 # The JSON is invalid, because of mixed encodings. The CSV also has
 # data quality issues, but most can be ignored.
 DB_URL = ('http://www.dmr-marc.net/cgi-bin/trbo-database/datadump.cgi'
-          '?table=users&format=csv&header=1')
+          '?table=users&format=csvq&header=1')
 
 # BrandMeister has a list of groups in JavaScript format, not quite JSON
 BM_GROUPS_JS = ('https://raw.githubusercontent.com/zarya'
