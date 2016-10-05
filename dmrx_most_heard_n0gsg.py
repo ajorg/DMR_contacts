@@ -1,5 +1,9 @@
 #!/usr/bin/env python2
 import csv
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 # dmrx.net uses SSL SNI, which urllib2 doesn't support
 import requests
@@ -40,8 +44,9 @@ def write_n0gsg_csv(contacts, csvo,
 
 
 def get_users(db_url=MOST_HEARD_URL):
-    source = requests.get(db_url, stream=True)
-    users = read_most_heard_csv(source.raw)
+    source = requests.get(db_url)
+    data = source.content.decode('utf-8', 'replace').encode('ascii', 'replace')
+    users = read_most_heard_csv(StringIO(str(data)))
     source.close()
     return users
 
@@ -51,5 +56,5 @@ if __name__ == '__main__':
     dci = get_groups_dci()
     bm = get_groups_bm()
 
-    with open('n0gsg-dci-bm-dmrx-most-heard.csv', 'wb') as csvo:
+    with open('n0gsg-dci-bm-dmrx-most-heard.csv', 'w') as csvo:
         write_n0gsg_csv(dci + bm + marc, csvo)

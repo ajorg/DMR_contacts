@@ -1,10 +1,21 @@
 #!/usr/bin/env python2
 import csv
 import json
+import logging
 import re
-from StringIO import StringIO
+try:
+    from urlparse import urlparse
+except ImportError:
+    from urllib.parse import urlparse
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 import requests
+import boto3
+
+s3 = boto3.client('s3')
 
 # The JSON is invalid, because of mixed encodings. The CSV also has
 # data quality issues, but most can be ignored.
@@ -24,6 +35,19 @@ ALIAS_ILLEGAL = re.compile('[^a-zA-Z0-9\. ]')
 
 # These are the field names as given in a CS750 contacts export.
 FIELDNAMES = ('No', 'Call Alias', 'Call Type', 'Call ID', 'Receive Tone')
+
+ALL_CALL = [{
+    'Call Alias': 'All Call',
+    'Call Type': 'All Call',
+    'Call ID': 1677215,
+    'Receive Tone': 'Yes',
+    }]
+SIMPLEX = [{
+    'Call Alias': 'Simplex',
+    'Call Type': 'Group Call',
+    'Call ID': 99,
+    'Receive Tone': 'No',
+    }]
 
 
 def alias_user(user):
@@ -75,7 +99,7 @@ def alias_group(group):
     "Utah 2"
     """
     alias = None
-    if isinstance(group, basestring):
+    if not isinstance(group, dict):
         group = {'name': group}
     if 'timeslot' not in group or not group['timeslot']:
         alias = group['name']
@@ -102,10 +126,10 @@ def read_users_csv(users):
                 'Call Type': 'Private Call',
                 'Call ID': row['Radio ID'],
                 'Receive Tone': 'No'})
-        except TypeError:
+        except TypeError as e:
             # For now, skip records that have problems. The most common is an
             # empty record, because of a newline in a field.
-            pass
+            logging.debug(e.message)
     return sorted(result, key=lambda k: k['Call ID'])
 
 
@@ -142,20 +166,37 @@ def write_contacts_xlsx(contacts, xlsxo,
     for field in fieldnames:
         ws.write_string(0, col, field)
         col += 1
+    seen = {}
     row = 1
     for contact in contacts:
+        if contact['Call ID'] in seen:
+            logging.debug('DUP! %s / %s',
+                          contact['Call Alias'], seen[contact['Call ID']])
+            continue
+        else:
+            seen[contact['Call ID']] = contact['Call Alias']
         col = 0
         for field in fieldnames:
             if field in contact:
-                ws.write(row, col, contact[field])
+                if field == 'Call ID':
+                    ws.write(row, col, int(contact[field]))
+                else:
+                    ws.write(row, col, contact[field])
             col += 1
         row += 1
     wb.close()
 
 
 def get_users(db_url=DB_URL):
-    db = requests.get(DB_URL)
-    db_io = StringIO(db.content)
+    parsed = urlparse(db_url)
+    if parsed.scheme == 's3':
+        o = s3.get_object(Bucket=parsed.netloc,
+                          Key=parsed.path.lstrip('/'))
+        data = o.get('Body').read().decode('utf-8', 'replace').encode('ascii', 'replace')
+    else:
+        db = requests.get(db_url)
+        data = db.content.decode('utf-8', 'replace').encode('ascii', 'replace')
+    db_io = StringIO(str(data))
     users = read_users_csv(db_io)
     db_io.close()
     return users
@@ -171,9 +212,16 @@ def get_groups_dci():
         return read_groups_json(dci)
 
 
-def get_groups_bm():
-    bm = requests.get(BM_GROUPS_JS)
-    bm_json = StringIO(js_json(bm.content))
+def get_groups_bm(groups_url=BM_GROUPS_JS):
+    parsed = urlparse(groups_url)
+    if parsed.scheme == 's3':
+        o = s3.get_object(Bucket=parsed.netloc,
+                          Key=parsed.path.lstrip('/'))
+        data = o.get('Body').read().decode('utf-8')
+        bm_json = StringIO(data)
+    else:
+        bm = requests.get(groups_url)
+        bm_json = StringIO(js_json(bm.text))
     groups = read_groups_json(bm_json)
     bm_json.close()
     return groups
@@ -185,9 +233,9 @@ if __name__ == '__main__':
     bm = get_groups_bm()
 
     with open('contacts-dci.xlsx', 'wb') as xlsxo:
-        write_contacts_xlsx(dci + bm + marc, xlsxo)
+        write_contacts_xlsx(SIMPLEX + dci + bm + marc, xlsxo)
 
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
-    with open('DMR_contacts.csv', 'wb') as csvo:
-        write_contacts_csv(dci + bm + marc, csvo)
+    with open('DMR_contacts.csv', 'w') as csvo:
+        write_contacts_csv(SIMPLEX + dci + bm + marc, csvo)
