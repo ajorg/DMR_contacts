@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 import csv
 import json
 import logging
@@ -11,21 +11,18 @@ try:
     from StringIO import StringIO
 except ImportError:
     from io import StringIO
+from io import BytesIO
 
 import requests
 import boto3
 
 s3 = boto3.client('s3')
 
-# The JSON is invalid, because of mixed encodings. The CSV also has
-# data quality issues, but most can be ignored.
-DB_URL = ('http://www.dmr-marc.net/cgi-bin/trbo-database/datadump.cgi'
-          '?table=users&format=csvq&header=1')
+logger = logging.getLogger(__name__)
 
-# BrandMeister has a list of groups in JavaScript format, not quite JSON
-BM_GROUPS_JS = ('https://raw.githubusercontent.com/zarya'
-                '/BrandMeister-Dashboard/master/js/groups.js')
-JSON_DICT = re.compile(r'({.*})', re.DOTALL)
+# Woohoo! The JSON dump seems to be valid now!
+USERS_URL = 's3://dmr-contacts/marc/users.json'
+GROUPS_URL = 's3://dmr-contacts/brandmeister/groups.json'
 
 # The CS750 uses a 6-bit encoding for the Call Alias, using only letters,
 # numbers, space, and period.
@@ -49,32 +46,30 @@ SIMPLEX = [{
     'Receive Tone': 'No',
     }]
 
+JSON_DICT = re.compile(r'({.*})', re.DOTALL)
+
+
+def js_json(js):
+    """Unwraps JSON from the JavaScript containing it."""
+    return JSON_DICT.search(js).groups()[0]
+
 
 def alias_user(user):
-    """Takes a user record as given in the DMR-MARC csv and returns a
-    Call Alias composed of the Callsign and either the Nickname or Name.
+    """Takes a user record as given in the DMR-MARC json and returns a
+    Call Alias composed of the callsign and name.
     """
-    callsign = user['Callsign']
+    callsign = user['callsign']
+    logger.debug(callsign)
 
-    name = user['Nickname']
-    if name:
-        name = name.strip()
-
-    names = user['Name']
+    names = user.get('name').split()
+    # Some names are just " "?
     if names:
-        names = names.split()
-
-    # name is still Nickname here. If it's None or empty, use the first name.
-    if not name and names:
         name = names[0]
         # Skip titles. Have not seen other titles in the data yet.
-        if name.lower() in ('dr', 'dr.'):
+        if name.lower() in ('dr', 'dr.') and len(names) > 1:
             name = names[1]
-
-    if name:
         alias = ' '.join((callsign, name))
     else:
-        # Both the Nickname and Name fields could be empty.
         alias = callsign
 
     # Could do something more useful, like transliterating, but this will
@@ -114,22 +109,21 @@ def alias_group(group):
     return ALIAS_ILLEGAL.sub('', alias)
 
 
-def read_users_csv(users):
+def read_users(users):
     """Reads DMR-MARC csv from the users file-like object and returns a list of
     dicts in CS750 export format."""
-    csvr = csv.DictReader(users)
     result = []
-    for row in csvr:
+    for user in users:
         try:
             result.append({
-                'Call Alias': alias_user(row),
+                'Call Alias': alias_user(user),
                 'Call Type': 'Private Call',
-                'Call ID': row['Radio ID'],
+                'Call ID': int(user['radio_id']),
                 'Receive Tone': 'No'})
         except TypeError as e:
             # For now, skip records that have problems. The most common is an
             # empty record, because of a newline in a field.
-            logging.debug(e.message)
+            logger.debug(e.message)
     return sorted(result, key=lambda k: k['Call ID'])
 
 
@@ -170,8 +164,8 @@ def write_contacts_xlsx(contacts, xlsxo,
     row = 1
     for contact in contacts:
         if contact['Call ID'] in seen:
-            logging.debug('DUP! %s / %s',
-                          contact['Call Alias'], seen[contact['Call ID']])
+            logger.debug('DUP! %s / %s',
+                         contact['Call Alias'], seen[contact['Call ID']])
             continue
         else:
             seen[contact['Call ID']] = contact['Call Alias']
@@ -187,32 +181,21 @@ def write_contacts_xlsx(contacts, xlsxo,
     wb.close()
 
 
-def get_users(db_url=DB_URL):
-    parsed = urlparse(db_url)
+def get_users(users_url=USERS_URL):
+    parsed = urlparse(users_url)
     if parsed.scheme == 's3':
         o = s3.get_object(Bucket=parsed.netloc,
                           Key=parsed.path.lstrip('/'))
-        data = o.get('Body').read().decode('utf-8', 'replace').encode('ascii', 'replace')
+        data = o.get('Body').read()
     else:
-        db = requests.get(db_url)
-        data = db.content.decode('utf-8', 'replace').encode('ascii', 'replace')
-    db_io = StringIO(str(data))
-    users = read_users_csv(db_io)
-    db_io.close()
-    return users
+        db = requests.get(users_url)
+        data = db.content
+    data = data.decode('utf-8', 'replace').encode('ascii', 'replace')
+    users = json.loads(data)['users']
+    return read_users(users)
 
 
-def js_json(js):
-    """Unwraps JSON from the JavaScript containing it."""
-    return JSON_DICT.search(js).groups()[0]
-
-
-def get_groups_dci():
-    with open('dci-groups.json') as dci:
-        return read_groups_json(dci)
-
-
-def get_groups_bm(groups_url=BM_GROUPS_JS):
+def get_groups_bm(groups_url=GROUPS_URL):
     parsed = urlparse(groups_url)
     if parsed.scheme == 's3':
         o = s3.get_object(Bucket=parsed.netloc,
@@ -227,15 +210,53 @@ def get_groups_bm(groups_url=BM_GROUPS_JS):
     return groups
 
 
-if __name__ == '__main__':
+def s3_contacts(contacts, bucket, key):
+    s3 = boto3.client('s3')
+
+    o = BytesIO()
+
+    if key.endswith('.csv'):
+        t = 'text/csv'
+        if key.startswith('N0GSG/'):
+            write_n0gsg_csv(contacts, o)
+        else:
+            write_contacts_csv(contacts, o)
+    elif key.endswith('.xlsx'):
+        t = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        write_contacts_xlsx(contacts, o)
+
+    s3.put_object(
+        Bucket=bucket, Key=key, StorageClass='REDUCED_REDUNDANCY',
+        Body=o.getvalue(), ContentType=t, ACL='public-read')
+    o.close()
+
+
+def lambda_handler(event=None, context=None):
+    logger.info('Getting MARC Users')
     marc = get_users()
-    dci = get_groups_dci()
+    logger.info('Getting BrandMeister Groups')
     bm = get_groups_bm()
 
-    with open('contacts-dci.xlsx', 'wb') as xlsxo:
-        write_contacts_xlsx(SIMPLEX + dci + bm + marc, xlsxo)
+    logger.info('Writing CS750 Contacts .csv')
+    s3_contacts(contacts=marc, bucket='dmr-contacts',
+                key='CS750/DMR_contacts.csv')
+
+    logger.info('Writing CS750 BrandMeister + MARC .xlsx')
+    s3_contacts(contacts=SIMPLEX + bm + marc, bucket='dmr-contacts',
+                key='CS750/brandmeister-marc.xlsx')
+
+
+if __name__ == '__main__':
+    logging.basicConfig()
+    logger.setLevel(logging.DEBUG)
+
+    marc = get_users()
+    bm = get_groups_bm()
+
+    with open('DMR_contacts.xlsx', 'wb') as xlsxo:
+        write_contacts_xlsx(SIMPLEX + bm + marc, xlsxo)
 
     # In exported contacts, the sheet name is DMR_contacts. Naming the file
     # this way maintains that, though it seems to not be important.
     with open('DMR_contacts.csv', 'w') as csvo:
-        write_contacts_csv(SIMPLEX + dci + bm + marc, csvo)
+        write_contacts_csv(SIMPLEX + bm + marc, csvo)
