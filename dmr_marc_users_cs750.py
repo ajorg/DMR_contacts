@@ -20,8 +20,10 @@ s3 = boto3.client('s3')
 
 logger = logging.getLogger(__name__)
 
-# Woohoo! The JSON dump seems to be valid now!
-USERS_URL = 's3://dmr-contacts/marc/users.json'
+# Crud, the JSON dump is... empty?
+# USERS_URL = 's3://dmr-contacts/marc/users.json'
+# Back to the CSV then...
+USERS_URL = 's3://dmr-contacts/marc/users.csv'
 GROUPS_URL = 's3://dmr-contacts/brandmeister/groups.json'
 
 # The CS750 uses a 6-bit encoding for the Call Alias, using only letters,
@@ -58,10 +60,11 @@ def alias_user(user):
     """Takes a user record as given in the DMR-MARC json and returns a
     Call Alias composed of the callsign and name.
     """
-    callsign = user['callsign']
+    callsign = user.get('callsign') or user.get('Callsign')
     logger.debug(callsign)
 
-    names = user.get('name').split()
+    name = user.get('name') or user.get('Name')
+    names = name.split()
     # Some names are just " "?
     if names:
         name = names[0]
@@ -109,9 +112,28 @@ def alias_group(group):
     return ALIAS_ILLEGAL.sub('', alias)
 
 
-def read_users(users):
+def read_users_csv(users_fp):
     """Reads DMR-MARC csv from the users file-like object and returns a list of
     dicts in CS750 export format."""
+    csvr = csv.DictReader(users_fp)
+    result = []
+    for row in csvr:
+        try:
+            result.append({
+                'Call Alias': alias_user(row),
+                'Call Type': 'Private Call',
+                'Call ID': int(row['Radio ID']),
+                'Receive Tone': 'No'})
+        except TypeError as e:
+            # For now, skip records that have problems. The most common is an
+            # empty record, because of a newline in a field.
+            logger.debug(e.message)
+    return sorted(result, key=lambda k: k['Call ID'])
+
+
+def read_users(users):
+    """Consumes the DMR-MARC json dict and returns a list of dicts in
+    CS750 export format."""
     result = []
     for user in users:
         try:
@@ -191,8 +213,14 @@ def get_users(users_url=USERS_URL):
         db = requests.get(users_url)
         data = db.content
     data = data.decode('utf-8', 'replace').encode('ascii', 'replace')
-    users = json.loads(data)['users']
-    return read_users(users)
+    if parsed.path.endswith('.json'):
+        users = json.loads(data)['users']
+        return read_users(users)
+    elif parsed.path.endswith('.csv'):
+        db_io = StringIO(str(data))
+        users = read_users_csv(db_io)
+        db_io.close()
+        return users
 
 
 def get_groups_bm(groups_url=GROUPS_URL):
